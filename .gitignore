@@ -211,6 +211,9 @@ output/
 # Local development input files may contain private bank statements
 input/
 
+# macOS Finder metadata
+.DS_Store
+
 # Ruff stuff:
 .ruff_cache/
 
