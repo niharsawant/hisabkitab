@@ -24,6 +24,21 @@ FIRST_COLUMN = 2  # B
 LAST_COLUMN = 9  # I
 HEADERS = ("Date", "Amount", "Category", "Payment Mode", "Type", "Note")
 __version__ = "v0.1.0"
+CATEGORY_RULES = (
+    (("jio", "tata power", "mahanagar", "tata play"), "Bills"),
+    (("zomato", "heisetasse", "third wave", "starbucks", "bluetokai", "brijwasi", "blue tokai", "food"), "Food"),
+    (("blinkit", "grofers", "licious", "naturesbasket", "natures bas", "grocery", "grn organic", "mahboob450", "rsp blink"), "Grocery"),
+    (("rentomojo", "amazon", "rajkumar"), "Home"),
+    (("salvipradnya12", "dhotrehanuman5"), "Househelp"),
+    (("nanny", "vrushalichavan", "rushali"), "Nanny"),
+    (("netflix",), "Entertainment"),
+    (("family",), "Contribution"),
+    (("rent",), "Rent"),
+    (("dialpad",), "Salary"),
+    (("uber", "ola", "auto", "rickshaw"), "Local Travel"),
+    (("mother chemist", "medicine"), "Pharmacy"),
+    (("firstcry",), "Childcare")
+)
 
 
 def local_path(value: str) -> Path:
@@ -65,6 +80,14 @@ def date_sort_key(value: object) -> tuple[int, date]:
         except ValueError:
             pass
     return (0, date.min)
+
+
+def categorize_note(note: object) -> str:
+    text = str(note or "").casefold()
+    for keys, category in CATEGORY_RULES:
+        if any(key in text for key in keys):
+            return category
+    return "Others"
 
 
 def convert(input_path: Path, output_path: Path) -> int:
@@ -113,7 +136,8 @@ def convert(input_path: Path, output_path: Path) -> int:
 
             if hasattr(transaction_date, "strftime"):
                 transaction_date = transaction_date.strftime("%Y-%m-%d")
-            record = (transaction_date, amount, "", "Family", transaction_type, remark or "")
+            note = remark or ""
+            record = (transaction_date, amount, categorize_note(note), "Family", transaction_type, note)
             transactions.append((date_sort_key(transaction_date), record))
             count += 1
         transactions.sort(key=lambda item: item[0], reverse=True)
