@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Convert an ICICI family account Excel statement to the HisabKitab CSV format.
 
-Usage: python hisabkitab.py
+Usage: python hisabkitab.py [--dev]
 """
 
 from __future__ import annotations
 
 import csv
+import argparse
 import sys
 from datetime import date, datetime
 from pathlib import Path
@@ -122,10 +123,17 @@ def convert(input_path: Path, output_path: Path) -> int:
 
 def main() -> int:
     try:
-        input_value = input("Provide Excel sheet of the family bank account: ").strip()
-        if not input_value:
-            raise ValueError("No Excel file path was provided")
-        input_path = local_path(input_value)
+        parser = argparse.ArgumentParser(description=__doc__)
+        parser.add_argument("-d", "--dev", action="store_true", help="use ./input/family.xls without prompting")
+        args = parser.parse_args()
+
+        if args.dev:
+            input_path = Path.cwd() / "input" / "family.xls"
+        else:
+            input_value = input("Provide Excel sheet of the family bank account: ").strip()
+            if not input_value:
+                raise ValueError("No Excel file path was provided")
+            input_path = local_path(input_value)
         output_path = Path.cwd() / "output" / f"family-{date.today():%Y-%m-%d}.csv"
         count = convert(input_path, output_path)
     except (OSError, ValueError, KeyError) as exc:

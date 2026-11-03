@@ -208,6 +208,9 @@ tempCodeRunnerFile.py
 # Generated statement exports
 output/
 
+# Local development input files may contain private bank statements
+input/
+
 # Ruff stuff:
 .ruff_cache/
 
