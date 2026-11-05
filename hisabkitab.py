@@ -11,6 +11,7 @@ import argparse
 import importlib
 from io import BytesIO
 import sys
+import tempfile
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -240,6 +241,7 @@ def convert_credit_card(input_path: Path, output_path: Path) -> int:
 
 
 def main() -> int:
+    temporary_output = None
     try:
         parser = argparse.ArgumentParser(description=__doc__)
         parser.add_argument("-d", "--dev", action="store_true", help="use the three statement files in ./input without prompting")
@@ -284,7 +286,12 @@ def main() -> int:
             if not input_paths:
                 raise ValueError("No valid statement files were provided; nothing to convert.")
 
-        output_dir = Path.cwd() / "output"
+        persistent_output_dir = Path.cwd() / "output"
+        if args.dev:
+            output_dir = persistent_output_dir
+        else:
+            temporary_output = tempfile.TemporaryDirectory(prefix="hisabkitab-")
+            output_dir = Path(temporary_output.name)
         run_date = date.today().strftime("%Y-%m-%d")
         output_paths = {
             "family": output_dir / f"family-{run_date}.csv",
@@ -298,17 +305,24 @@ def main() -> int:
                 count = convert_credit_card(input_path, output_path)
             else:
                 count = convert(input_path, output_path, payment_modes[account])
-            print(f"Wrote {count} transactions to {output_path}")
+            if args.dev:
+                print(f"Wrote {count} transactions to {output_path}")
+            else:
+                print(f"Prepared {count} transactions from {account} statement")
         if not args.dev:
             from google_sheets_sync import InvalidServiceAccountConfig, sync_exports
 
             sync_personal = "personal" in input_paths or "credit_personal" in input_paths
-            personal_csv = output_paths["personal"] if sync_personal and output_paths["personal"].is_file() else None
-            credit_personal_csv = (
-                output_paths["credit_personal"]
-                if sync_personal and output_paths["credit_personal"].is_file()
-                else None
-            )
+
+            def personal_csv_path(account: str):
+                generated_path = output_paths[account]
+                if generated_path.is_file():
+                    return generated_path
+                previous_output = persistent_output_dir / generated_path.name
+                return previous_output if previous_output.is_file() else None
+
+            personal_csv = personal_csv_path("personal") if sync_personal else None
+            credit_personal_csv = personal_csv_path("credit_personal") if sync_personal else None
 
             try:
                 added = sync_exports(
@@ -332,6 +346,9 @@ def main() -> int:
     except (OSError, ValueError, KeyError, RuntimeError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
+    finally:
+        if temporary_output is not None:
+            temporary_output.cleanup()
 
     return 0
 
