@@ -8,13 +8,14 @@ from __future__ import annotations
 
 import csv
 import argparse
+import importlib
 import sys
 from datetime import date, datetime
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 try:
-    from python_calamine import CalamineWorkbook
+    CalamineWorkbook = importlib.import_module("python_calamine").CalamineWorkbook
 except ImportError as exc:  # pragma: no cover - exercised by command-line use
     raise SystemExit("Missing dependency: install python-calamine with 'python -m pip install python-calamine'") from exc
 
