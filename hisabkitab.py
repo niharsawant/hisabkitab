@@ -20,6 +20,14 @@ try:
 except ImportError as exc:  # pragma: no cover - exercised by command-line use
     raise SystemExit("Missing dependency: install python-calamine with 'python -m pip install python-calamine'") from exc
 
+try:
+    tomllib = importlib.import_module("tomllib")
+except ModuleNotFoundError:  # Python 3.10 and earlier
+    try:
+        tomllib = importlib.import_module("tomli")
+    except ImportError as exc:  # pragma: no cover - exercised by command-line use
+        raise SystemExit("Missing dependency: install tomli with 'python -m pip install tomli'") from exc
+
 
 FIRST_DATA_ROW = 14
 FIRST_COLUMN = 2  # B
@@ -30,21 +38,37 @@ CARD_FIRST_COLUMN = 2  # B
 CARD_LAST_COLUMN = 18  # R
 HEADERS = ("Date", "Amount", "Category", "Payment Mode", "Type", "Note", "Transaction Reference")
 __version__ = "v0.1.0"
-CATEGORY_RULES = (
-    (("jio", "tata power", "mahanagar", "tata play"), "Bills"),
-    (("zomato", "heisetasse", "third wave", "starbucks", "bluetokai", "brijwasi", "blue tokai", "food"), "Food"),
-    (("blinkit", "grofers", "licious", "naturesbasket", "natures bas", "grocery", "grn organic", "mahboob450", "rsp blink"), "Grocery"),
-    (("rentomojo", "amazon", "rajkumar"), "Home"),
-    (("salvipradnya12", "dhotrehanuman5"), "Househelp"),
-    (("nanny", "vrushalichavan", "rushali"), "Nanny"),
-    (("netflix",), "Entertainment"),
-    (("family",), "Contribution"),
-    (("rent",), "Rent"),
-    (("dialpad",), "Salary"),
-    (("uber", "ola", "auto", "rickshaw"), "Local Travel"),
-    (("mother chemist", "medicine"), "Pharmacy"),
-    (("firstcry",), "Childcare")
-)
+CATEGORY_RULES_PATH = Path(__file__).with_name("config.toml")
+
+
+def load_category_rules(path: Path = CATEGORY_RULES_PATH) -> tuple[tuple[tuple[str, ...], str], ...]:
+    if not path.is_file():
+        example_path = path.with_name("config.example.toml")
+        raise SystemExit(f"Category rules file not found: {path}. Copy {example_path.name} to {path.name}.")
+
+    try:
+        with path.open("rb") as rules_file:
+            config = tomllib.load(rules_file)
+    except tomllib.TOMLDecodeError as exc:
+        raise SystemExit(f"Invalid TOML in {path}: {exc}") from exc
+
+    rules = config.get("rules")
+    if not isinstance(rules, list) or not rules:
+        raise SystemExit(f"{path} must contain one or more [[rules]] entries")
+
+    parsed_rules = []
+    for index, rule in enumerate(rules, start=1):
+        keys = rule.get("keys") if isinstance(rule, dict) else None
+        category = rule.get("category") if isinstance(rule, dict) else None
+        if not isinstance(keys, list) or not keys or not all(isinstance(key, str) and key.strip() for key in keys):
+            raise SystemExit(f"Rule {index} in {path} must have a non-empty array of string keys")
+        if not isinstance(category, str) or not category.strip():
+            raise SystemExit(f"Rule {index} in {path} must have a non-empty string category")
+        parsed_rules.append((tuple(key.strip().casefold() for key in keys), category.strip()))
+    return tuple(parsed_rules)
+
+
+CATEGORY_RULES = load_category_rules()
 
 
 def local_path(value: str) -> Path:

@@ -211,6 +211,9 @@ output/
 # Local development input files may contain private bank statements
 input/
 
+# Local category customizations
+config.toml
+
 # macOS Finder metadata
 .DS_Store
 
