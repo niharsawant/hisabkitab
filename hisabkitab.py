@@ -28,7 +28,7 @@ CARD_HEADER_ROW = 16
 CARD_FIRST_DATA_ROW = 18
 CARD_FIRST_COLUMN = 2  # B
 CARD_LAST_COLUMN = 18  # R
-HEADERS = ("Date", "Amount", "Category", "Payment Mode", "Type", "Note")
+HEADERS = ("Date", "Amount", "Category", "Payment Mode", "Type", "Note", "Transaction Reference")
 __version__ = "v0.1.0"
 CATEGORY_RULES = (
     (("jio", "tata power", "mahanagar", "tata play"), "Bills"),
@@ -143,7 +143,7 @@ def convert(input_path: Path, output_path: Path, payment_mode: str) -> int:
             if hasattr(transaction_date, "strftime"):
                 transaction_date = transaction_date.strftime("%Y-%m-%d")
             note = remark or ""
-            record = (transaction_date, amount, categorize_note(note), payment_mode, transaction_type, note)
+            record = (transaction_date, amount, categorize_note(note), payment_mode, transaction_type, note, "")
             transactions.append((date_sort_key(transaction_date), record))
             count += 1
         transactions.sort(key=lambda item: item[0], reverse=True)
@@ -168,6 +168,7 @@ def convert_credit_card(input_path: Path, output_path: Path) -> int:
     date_col = find_column(headers, ("transaction date", "date")) - 1
     details_col = find_column(headers, ("details", "description", "narration")) - 1
     amount_col = find_column(headers, ("amount",)) - 1
+    reference_col = find_column(headers, ("reference number", "reference no")) - 1
 
     transactions = []
     for values in sheet[CARD_FIRST_DATA_ROW - 1:]:
@@ -175,6 +176,7 @@ def convert_credit_card(input_path: Path, output_path: Path) -> int:
         transaction_date = row[date_col] if len(row) > date_col else None
         details = row[details_col] if len(row) > details_col else None
         raw_amount = row[amount_col] if len(row) > amount_col else None
+        reference = row[reference_col] if len(row) > reference_col else None
         if raw_amount is None or str(raw_amount).strip() == "":
             continue
 
@@ -195,7 +197,7 @@ def convert_credit_card(input_path: Path, output_path: Path) -> int:
         if hasattr(transaction_date, "strftime"):
             transaction_date = transaction_date.strftime("%Y-%m-%d")
         note = details or ""
-        record = (transaction_date, amount, categorize_note(note), "Personal Credit Card", transaction_type, note)
+        record = (transaction_date, amount, categorize_note(note), "Personal Credit Card", transaction_type, note, reference or "")
         transactions.append((date_sort_key(transaction_date), record))
 
     transactions.sort(key=lambda item: item[0], reverse=True)
