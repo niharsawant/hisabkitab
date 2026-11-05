@@ -1,31 +1,60 @@
-# hisabkitab
-A Python-based personal finance tool that parses and consolidates bank statements from multiple accounts into a unified expense tracker, ready to be exported to Google Sheets. One ledger to make sense of all your money.
+# HisabKitab
 
-## Convert an ICICI family account statement
+Convert ICICI family and personal bank statements, plus a personal credit card statement, into date-sorted CSV files.
 
-Install the dependencies, then run the script. By default, it prompts for the family account statement, the personal account statement, and the personal credit card statement, accepting a local path or a `file://` URL for each. The reader supports both legacy `.xls` and newer `.xlsx` files. It writes `./output/family-<YYYY-MM-DD>.csv`, `./output/personal-<YYYY-MM-DD>.csv`, and `./output/credit-personal-<YYYY-MM-DD>.csv`, using the date the script runs.
+## Setup
+
+The script supports `.xls` and `.xlsx` workbooks. Install its dependencies and create your local category configuration:
 
 ```sh
 python -m pip install python-calamine tomli
 cp config.example.toml config.toml
+```
+
+`tomli` is only needed with Python versions earlier than 3.11. Edit `config.toml` with your own category keywords. The local file is ignored by Git; `config.example.toml` contains fictional sample rules.
+
+## Run
+
+```sh
 python hisabkitab.py
 ```
 
-When prompted for each statement, enter a local path such as `./ICICI statement.xlsx` or a `file://` URL such as `file:///Users/me/ICICI%20statement.xlsx`.
+Enter the requested file path or `file://` URL for each statement, in this order:
 
-### Development mode
+1. Family bank account
+2. Personal bank account
+3. Personal credit card
 
-During development, keep the family account statement in the `input` folder as `family.xls`, the personal account statement as `personal.xls`, and the personal credit card statement as `credit-personal.xls`. Run with `--dev` (or `-d`) to skip the prompts and use those files:
+The script writes three CSVs to `output/`, named `family-YYYY-MM-DD.csv`, `personal-YYYY-MM-DD.csv`, and `credit-personal-YYYY-MM-DD.csv` using the run date.
+
+## Development mode
+
+Place the statements in `input/` with these filenames:
+
+| Statement | Filename |
+| --- | --- |
+| Family bank account | `family.xls` |
+| Personal bank account | `personal.xls` |
+| Personal credit card | `credit-personal.xls` |
+
+Then run:
 
 ```sh
 python hisabkitab.py --dev
-# or
-python hisabkitab.py -d
 ```
 
+The `-d` option is an alias for `--dev`.
 
-The bank statement converters read the active worksheet, use headers in row 13 and transaction rows from row 14 onward, and write `Date, Amount, Category, Payment Mode, Type, Note, Transaction Reference`. The personal credit card converter reads headers from row 16 and transactions from row 18 onward; `Dr.` amounts become negative expenses, and `Cr.` amounts become positive income. Its `Reference Number` maps to `Transaction Reference`; this field is blank for bank statement exports. Categories use case-insensitive keyword matches in the transaction note; unmatched notes are categorized as `Others`. Payment Mode is `Family`, `Personal`, or `Personal Credit Card` for the corresponding statement.
+## CSV and category rules
 
-### Category rules
+All files have these columns: `Date`, `Amount`, `Category`, `Payment Mode`, `Type`, `Note`, and `Transaction Reference`. Transactions are sorted newest first. Bank statement rows use headers on row 13 and data from row 14; credit card rows use headers on row 16 and data from row 18. Credit card `Dr.` amounts are negative Expenses; `Cr.` amounts are positive Income. The credit card `Reference Number` is written to `Transaction Reference`; this field is blank for bank statements.
 
-Category keywords and names are loaded from `config.toml`. Start by copying `config.example.toml` to that filename, replace the placeholder keyword and category, then add one `[[rules]]` section for each category. Each section has a `keys` array and a `category` value. Matching is case-insensitive substring matching against the transaction note. Rules are checked top to bottom, and the first match wins; notes without a match are categorized as `Others`. The example contains placeholders only; your `config.toml` stays local and is ignored by Git.
+The script assigns categories by matching each rule's keywords against the transaction note, without regard to case. Rules in `config.toml` are checked top to bottom; the first match wins. Unmatched transactions receive `Others`.
+
+Add one `[[rules]]` section per category in `config.toml`, with a `keys` array and `category` name. For example:
+
+```toml
+[[rules]]
+keys = ["sample cafe", "demo restaurant"]
+category = "Food"
+```
