@@ -91,7 +91,7 @@ def categorize_note(note: object) -> str:
     return "Others"
 
 
-def convert(input_path: Path, output_path: Path) -> int:
+def convert(input_path: Path, output_path: Path, payment_mode: str) -> int:
     if not input_path.is_file():
         raise FileNotFoundError(f"Input file not found: {input_path}")
 
@@ -138,7 +138,7 @@ def convert(input_path: Path, output_path: Path) -> int:
             if hasattr(transaction_date, "strftime"):
                 transaction_date = transaction_date.strftime("%Y-%m-%d")
             note = remark or ""
-            record = (transaction_date, amount, categorize_note(note), "Family", transaction_type, note)
+            record = (transaction_date, amount, categorize_note(note), payment_mode, transaction_type, note)
             transactions.append((date_sort_key(transaction_date), record))
             count += 1
         transactions.sort(key=lambda item: item[0], reverse=True)
@@ -175,11 +175,12 @@ def main() -> int:
             output_dir / f"family-{run_date}.csv",
             output_dir / f"personal-{run_date}.csv",
         )
+        payment_modes = ("Family", "Personal")
         missing_inputs = [str(path) for path in input_paths if not path.is_file()]
         if missing_inputs:
             raise FileNotFoundError(f"Excel file not found: {', '.join(missing_inputs)}")
-        for input_path, output_path in zip(input_paths, output_paths):
-            count = convert(input_path, output_path)
+        for input_path, output_path, payment_mode in zip(input_paths, output_paths, payment_modes):
+            count = convert(input_path, output_path, payment_mode)
             print(f"Wrote {count} transactions to {output_path}")
     except (OSError, ValueError, KeyError) as exc:
         print(f"Error: {exc}", file=sys.stderr)

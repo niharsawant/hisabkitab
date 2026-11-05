@@ -23,4 +23,4 @@ python hisabkitab.py -d
 ```
 
 
-The converter reads the active worksheet, uses the headers in row 13 and transaction rows from row 14 onward, and writes `Date, Amount, Category, Payment Mode, Type, Note`. Categories are assigned by case-insensitive keyword matches in the transaction note; unmatched notes are categorized as `Others`. Withdrawals become negative expenses; deposits become positive income. Payment Mode is `Family`.
+The converter reads the active worksheet, uses the headers in row 13 and transaction rows from row 14 onward, and writes `Date, Amount, Category, Payment Mode, Type, Note`. Categories are assigned by case-insensitive keyword matches in the transaction note; unmatched notes are categorized as `Others`. Withdrawals become negative expenses; deposits become positive income. Payment Mode is `Family` for family account transactions and `Personal` for personal account transactions.
