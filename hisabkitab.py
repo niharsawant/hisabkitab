@@ -9,6 +9,7 @@ from __future__ import annotations
 import csv
 import argparse
 import importlib
+from io import BytesIO
 import sys
 from datetime import date, datetime
 from pathlib import Path
@@ -23,6 +24,10 @@ except ImportError as exc:  # pragma: no cover - exercised by command-line use
 FIRST_DATA_ROW = 14
 FIRST_COLUMN = 2  # B
 LAST_COLUMN = 9  # I
+CARD_HEADER_ROW = 16
+CARD_FIRST_DATA_ROW = 18
+CARD_FIRST_COLUMN = 2  # B
+CARD_LAST_COLUMN = 18  # R
 HEADERS = ("Date", "Amount", "Category", "Payment Mode", "Type", "Note")
 __version__ = "v0.1.0"
 CATEGORY_RULES = (
@@ -146,21 +151,79 @@ def convert(input_path: Path, output_path: Path, payment_mode: str) -> int:
     return count
 
 
+def convert_credit_card(input_path: Path, output_path: Path) -> int:
+    """Convert the personal credit card statement layout (headers row 16, data row 18)."""
+    if not input_path.is_file():
+        raise FileNotFoundError(f"Input file not found: {input_path}")
+
+    workbook = CalamineWorkbook.from_filelike(BytesIO(input_path.read_bytes()))
+    sheet = workbook.get_sheet_by_index(0).to_python(skip_empty_area=False)
+    header_index = CARD_HEADER_ROW - 1
+    headers = [
+        sheet[header_index][column - 1]
+        if len(sheet) > header_index and len(sheet[header_index]) >= column
+        else None
+        for column in range(CARD_FIRST_COLUMN, CARD_LAST_COLUMN + 1)
+    ]
+    date_col = find_column(headers, ("transaction date", "date")) - 1
+    details_col = find_column(headers, ("details", "description", "narration")) - 1
+    amount_col = find_column(headers, ("amount",)) - 1
+
+    transactions = []
+    for values in sheet[CARD_FIRST_DATA_ROW - 1:]:
+        row = list(values) + [None] * max(0, CARD_LAST_COLUMN - len(values))
+        transaction_date = row[date_col] if len(row) > date_col else None
+        details = row[details_col] if len(row) > details_col else None
+        raw_amount = row[amount_col] if len(row) > amount_col else None
+        if raw_amount is None or str(raw_amount).strip() == "":
+            continue
+
+        amount_text = str(raw_amount).strip()
+        is_debit = amount_text.casefold().endswith("dr.")
+        is_credit = amount_text.casefold().endswith("cr.")
+        if is_debit or is_credit:
+            amount_text = amount_text[:-3].strip()
+        amount_text = amount_text.replace(",", "").replace("INR", "").strip()
+        amount_value = float(raw_amount) if isinstance(raw_amount, (int, float)) else float(amount_text)
+        if is_debit:
+            amount = -abs(amount_value)
+            transaction_type = "Expense"
+        else:
+            amount = abs(amount_value)
+            transaction_type = "Income"
+
+        if hasattr(transaction_date, "strftime"):
+            transaction_date = transaction_date.strftime("%Y-%m-%d")
+        note = details or ""
+        record = (transaction_date, amount, categorize_note(note), "Personal Credit Card", transaction_type, note)
+        transactions.append((date_sort_key(transaction_date), record))
+
+    transactions.sort(key=lambda item: item[0], reverse=True)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", newline="", encoding="utf-8-sig") as csv_file:
+        writer = csv.writer(csv_file)
+        writer.writerow(HEADERS)
+        writer.writerows(record for _, record in transactions)
+    return len(transactions)
+
+
 def main() -> int:
     try:
         parser = argparse.ArgumentParser(description=__doc__)
-        parser.add_argument("-d", "--dev", action="store_true", help="use ./input/family.xls and ./input/personal.xls without prompting")
+        parser.add_argument("-d", "--dev", action="store_true", help="use the three statement files in ./input without prompting")
         args = parser.parse_args()
 
         if args.dev:
             input_paths = (
                 Path.cwd() / "input" / "family.xls",
                 Path.cwd() / "input" / "personal.xls",
+                Path.cwd() / "input" / "credit-personal.xls",
             )
         else:
             account_inputs = (
                 ("family", "Provide Excel sheet of the family bank account: "),
                 ("personal", "Provide Excel sheet of the personal bank account: "),
+                ("personal credit card", "Provide Excel sheet of the personal credit card statement: "),
             )
             input_paths = []
             for account, prompt in account_inputs:
@@ -174,14 +237,17 @@ def main() -> int:
         output_paths = (
             output_dir / f"family-{run_date}.csv",
             output_dir / f"personal-{run_date}.csv",
+            output_dir / f"credit-personal-{run_date}.csv",
         )
         payment_modes = ("Family", "Personal")
         missing_inputs = [str(path) for path in input_paths if not path.is_file()]
         if missing_inputs:
             raise FileNotFoundError(f"Excel file not found: {', '.join(missing_inputs)}")
-        for input_path, output_path, payment_mode in zip(input_paths, output_paths, payment_modes):
+        for input_path, output_path, payment_mode in zip(input_paths[:2], output_paths[:2], payment_modes):
             count = convert(input_path, output_path, payment_mode)
             print(f"Wrote {count} transactions to {output_path}")
+        count = convert_credit_card(input_paths[2], output_paths[2])
+        print(f"Wrote {count} transactions to {output_paths[2]}")
     except (OSError, ValueError, KeyError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
