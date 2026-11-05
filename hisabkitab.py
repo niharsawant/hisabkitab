@@ -11,7 +11,7 @@ import argparse
 import importlib
 from io import BytesIO
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
@@ -41,7 +41,7 @@ __version__ = "v0.1.0"
 CATEGORY_RULES_PATH = Path(__file__).with_name("config.toml")
 
 
-def load_category_rules(path: Path = CATEGORY_RULES_PATH) -> tuple[tuple[tuple[str, ...], str], ...]:
+def load_config(path: Path = CATEGORY_RULES_PATH) -> dict[str, object]:
     if not path.is_file():
         example_path = path.with_name("config.example.toml")
         raise SystemExit(f"Category rules file not found: {path}. Copy {example_path.name} to {path.name}.")
@@ -51,24 +51,28 @@ def load_category_rules(path: Path = CATEGORY_RULES_PATH) -> tuple[tuple[tuple[s
             config = tomllib.load(rules_file)
     except tomllib.TOMLDecodeError as exc:
         raise SystemExit(f"Invalid TOML in {path}: {exc}") from exc
+    return config
 
+
+def load_category_rules(config: dict[str, object]) -> tuple[tuple[tuple[str, ...], str], ...]:
     rules = config.get("rules")
     if not isinstance(rules, list) or not rules:
-        raise SystemExit(f"{path} must contain one or more [[rules]] entries")
+        raise SystemExit(f"{CATEGORY_RULES_PATH} must contain one or more [[rules]] entries")
 
     parsed_rules = []
     for index, rule in enumerate(rules, start=1):
         keys = rule.get("keys") if isinstance(rule, dict) else None
         category = rule.get("category") if isinstance(rule, dict) else None
         if not isinstance(keys, list) or not keys or not all(isinstance(key, str) and key.strip() for key in keys):
-            raise SystemExit(f"Rule {index} in {path} must have a non-empty array of string keys")
+            raise SystemExit(f"Rule {index} in {CATEGORY_RULES_PATH} must have a non-empty array of string keys")
         if not isinstance(category, str) or not category.strip():
-            raise SystemExit(f"Rule {index} in {path} must have a non-empty string category")
+            raise SystemExit(f"Rule {index} in {CATEGORY_RULES_PATH} must have a non-empty string category")
         parsed_rules.append((tuple(key.strip().casefold() for key in keys), category.strip()))
     return tuple(parsed_rules)
 
 
-CATEGORY_RULES = load_category_rules()
+CONFIG = load_config()
+CATEGORY_RULES = load_category_rules(CONFIG)
 
 
 def local_path(value: str) -> Path:
@@ -97,19 +101,32 @@ def find_column(headers: list[str], names: tuple[str, ...]) -> int:
     raise ValueError(f"Could not find a column matching: {', '.join(names)}")
 
 
-def date_sort_key(value: object) -> tuple[int, date]:
-    """Parse common statement date values; unparseable dates sort last."""
+def normalize_transaction_date(value: object) -> str:
+    """Return a transaction date as YYYY-MM-DD or reject an unrecognized value."""
     if isinstance(value, datetime):
-        return (1, value.date())
+        return value.date().isoformat()
     if isinstance(value, date):
-        return (1, value)
+        return value.isoformat()
+    if isinstance(value, (int, float)):
+        return (datetime(1899, 12, 30) + timedelta(days=float(value))).date().isoformat()
     text = str(value or "").strip()
-    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%d.%m.%Y"):
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%d.%m.%Y", "%m/%d/%Y", "%d/%m/%y", "%d-%b-%Y"):
         try:
-            return (1, datetime.strptime(text, fmt).date())
+            return datetime.strptime(text, fmt).date().isoformat()
         except ValueError:
-            pass
-    return (0, date.min)
+            continue
+    try:
+        return datetime.fromisoformat(text).date().isoformat()
+    except ValueError as exc:
+        raise ValueError(f"Unrecognized transaction date: {value!r}; expected a valid date") from exc
+
+
+def date_sort_key(value: object) -> tuple[int, date]:
+    """Sort valid transaction dates newest first; invalid values sort last."""
+    try:
+        return (1, date.fromisoformat(normalize_transaction_date(value)))
+    except ValueError:
+        return (0, date.min)
 
 
 def categorize_note(note: object) -> str:
@@ -164,8 +181,7 @@ def convert(input_path: Path, output_path: Path, payment_mode: str) -> int:
                 # Skip non-transaction rows such as repeated headings or balances.
                 continue
 
-            if hasattr(transaction_date, "strftime"):
-                transaction_date = transaction_date.strftime("%Y-%m-%d")
+            transaction_date = normalize_transaction_date(transaction_date)
             note = remark or ""
             record = (transaction_date, amount, categorize_note(note), payment_mode, transaction_type, note, "")
             transactions.append((date_sort_key(transaction_date), record))
@@ -218,8 +234,7 @@ def convert_credit_card(input_path: Path, output_path: Path) -> int:
             amount = abs(amount_value)
             transaction_type = "Income"
 
-        if hasattr(transaction_date, "strftime"):
-            transaction_date = transaction_date.strftime("%Y-%m-%d")
+        transaction_date = normalize_transaction_date(transaction_date)
         note = details or ""
         record = (transaction_date, amount, categorize_note(note), "Personal Credit Card", transaction_type, note, reference or "")
         transactions.append((date_sort_key(transaction_date), record))
@@ -236,7 +251,7 @@ def convert_credit_card(input_path: Path, output_path: Path) -> int:
 def main() -> int:
     try:
         parser = argparse.ArgumentParser(description=__doc__)
-        parser.add_argument("-d", "--dev", action="store_true", help="use available statement files in ./input without prompting")
+        parser.add_argument("-d", "--dev", action="store_true", help="use the three statement files in ./input without prompting")
         args = parser.parse_args()
 
         if args.dev:
@@ -251,6 +266,8 @@ def main() -> int:
                     input_paths[account] = input_path
                 else:
                     print(f"Warning: development input file not found for {account}: {input_path}; skipping it.", file=sys.stderr)
+            if not input_paths:
+                raise FileNotFoundError("No development input files were found in ./input; nothing to convert.")
         else:
             account_inputs = (
                 ("family", "Provide Excel sheet of the family bank account: "),
@@ -273,8 +290,8 @@ def main() -> int:
                     continue
                 input_paths[account] = input_path
 
-        if not input_paths:
-            raise ValueError("No valid statement files were provided; nothing to convert.")
+            if not input_paths:
+                raise ValueError("No valid statement files were provided; nothing to convert.")
 
         output_dir = Path.cwd() / "output"
         run_date = date.today().strftime("%Y-%m-%d")
@@ -291,7 +308,37 @@ def main() -> int:
             else:
                 count = convert(input_path, output_path, payment_modes[account])
             print(f"Wrote {count} transactions to {output_path}")
-    except (OSError, ValueError, KeyError) as exc:
+        if not args.dev:
+            from google_sheets_sync import InvalidServiceAccountConfig, sync_exports
+
+            sync_personal = "personal" in input_paths or "credit_personal" in input_paths
+            personal_csv = output_paths["personal"] if sync_personal and output_paths["personal"].is_file() else None
+            credit_personal_csv = (
+                output_paths["credit_personal"]
+                if sync_personal and output_paths["credit_personal"].is_file()
+                else None
+            )
+
+            try:
+                added = sync_exports(
+                    CONFIG,
+                    output_paths.get("family") if "family" in input_paths else None,
+                    personal_csv,
+                    credit_personal_csv,
+                    CATEGORY_RULES_PATH.parent,
+                )
+            except InvalidServiceAccountConfig as exc:
+                print(
+                    f"Warning: Google Sheets sync was skipped because service account credentials are missing or invalid. {exc} "
+                    "The CSV files were generated.",
+                    file=sys.stderr,
+                )
+                return 0
+            if "personal and credit card" in added:
+                print(f"Added {added['personal and credit card']} rows to the personal and credit card Google Sheet")
+            if "family" in added:
+                print(f"Added {added['family']} rows to the family Google Sheet")
+    except (OSError, ValueError, KeyError, RuntimeError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
 

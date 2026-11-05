@@ -214,6 +214,9 @@ input/
 # Local category customizations
 config.toml
 
+# Google service-account JSON key contains private key material.
+service-account.json
+
 # macOS Finder metadata
 .DS_Store
 
