@@ -149,23 +149,42 @@ def convert(input_path: Path, output_path: Path) -> int:
 def main() -> int:
     try:
         parser = argparse.ArgumentParser(description=__doc__)
-        parser.add_argument("-d", "--dev", action="store_true", help="use ./input/family.xls without prompting")
+        parser.add_argument("-d", "--dev", action="store_true", help="use ./input/family.xls and ./input/personal.xls without prompting")
         args = parser.parse_args()
 
         if args.dev:
-            input_path = Path.cwd() / "input" / "family.xls"
+            input_paths = (
+                Path.cwd() / "input" / "family.xls",
+                Path.cwd() / "input" / "personal.xls",
+            )
         else:
-            input_value = input("Provide Excel sheet of the family bank account: ").strip()
-            if not input_value:
-                raise ValueError("No Excel file path was provided")
-            input_path = local_path(input_value)
-        output_path = Path.cwd() / "output" / f"family-{date.today():%Y-%m-%d}.csv"
-        count = convert(input_path, output_path)
+            account_inputs = (
+                ("family", "Provide Excel sheet of the family bank account: "),
+                ("personal", "Provide Excel sheet of the personal bank account: "),
+            )
+            input_paths = []
+            for account, prompt in account_inputs:
+                input_value = input(prompt).strip()
+                if not input_value:
+                    raise ValueError(f"No Excel file path was provided for the {account} account")
+                input_paths.append(local_path(input_value))
+
+        output_dir = Path.cwd() / "output"
+        run_date = date.today().strftime("%Y-%m-%d")
+        output_paths = (
+            output_dir / f"family-{run_date}.csv",
+            output_dir / f"personal-{run_date}.csv",
+        )
+        missing_inputs = [str(path) for path in input_paths if not path.is_file()]
+        if missing_inputs:
+            raise FileNotFoundError(f"Excel file not found: {', '.join(missing_inputs)}")
+        for input_path, output_path in zip(input_paths, output_paths):
+            count = convert(input_path, output_path)
+            print(f"Wrote {count} transactions to {output_path}")
     except (OSError, ValueError, KeyError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
 
-    print(f"Wrote {count} transactions to {output_path}")
     return 0
 
 
