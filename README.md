@@ -19,7 +19,7 @@ cp config.example.toml config.toml
 python hisabkitab.py
 ```
 
-Enter the requested file path or `file://` URL for each statement, in this order:
+The script asks for each statement path or file URL in order. You may leave a prompt blank; missing or invalid files are warned about and skipped. At least one valid file is required.
 
 1. Family bank account
 2. Personal bank account
@@ -29,7 +29,7 @@ The script writes three CSVs to `output/`, named `family-YYYY-MM-DD.csv`, `perso
 
 ## Development mode
 
-Place the statements in `input/` with these filenames:
+Place any statements you want to process in `input/` with these filenames:
 
 | Statement | Filename |
 | --- | --- |
@@ -43,7 +43,7 @@ Then run:
 python hisabkitab.py --dev
 ```
 
-The `-d` option is an alias for `--dev`.
+The `-d` option is an alias for `--dev`. Missing files are warned about and skipped; at least one of the three files must be present.
 
 ## CSV and category rules
 

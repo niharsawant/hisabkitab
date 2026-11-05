@@ -236,44 +236,61 @@ def convert_credit_card(input_path: Path, output_path: Path) -> int:
 def main() -> int:
     try:
         parser = argparse.ArgumentParser(description=__doc__)
-        parser.add_argument("-d", "--dev", action="store_true", help="use the three statement files in ./input without prompting")
+        parser.add_argument("-d", "--dev", action="store_true", help="use available statement files in ./input without prompting")
         args = parser.parse_args()
 
         if args.dev:
-            input_paths = (
-                Path.cwd() / "input" / "family.xls",
-                Path.cwd() / "input" / "personal.xls",
-                Path.cwd() / "input" / "credit-personal.xls",
-            )
+            expected_inputs = {
+                "family": Path.cwd() / "input" / "family.xls",
+                "personal": Path.cwd() / "input" / "personal.xls",
+                "credit_personal": Path.cwd() / "input" / "credit-personal.xls",
+            }
+            input_paths = {}
+            for account, input_path in expected_inputs.items():
+                if input_path.is_file():
+                    input_paths[account] = input_path
+                else:
+                    print(f"Warning: development input file not found for {account}: {input_path}; skipping it.", file=sys.stderr)
         else:
             account_inputs = (
                 ("family", "Provide Excel sheet of the family bank account: "),
                 ("personal", "Provide Excel sheet of the personal bank account: "),
-                ("personal credit card", "Provide Excel sheet of the personal credit card statement: "),
+                ("credit_personal", "Provide Excel sheet of the personal credit card statement: "),
             )
-            input_paths = []
+            input_paths = {}
             for account, prompt in account_inputs:
                 input_value = input(prompt).strip()
                 if not input_value:
-                    raise ValueError(f"No Excel file path was provided for the {account} account")
-                input_paths.append(local_path(input_value))
+                    print(f"Warning: no file provided for {account}; skipping it.", file=sys.stderr)
+                    continue
+                try:
+                    input_path = local_path(input_value)
+                except ValueError as exc:
+                    print(f"Warning: invalid path for {account} ({exc}); skipping it.", file=sys.stderr)
+                    continue
+                if not input_path.is_file():
+                    print(f"Warning: file not found for {account}: {input_path}; skipping it.", file=sys.stderr)
+                    continue
+                input_paths[account] = input_path
+
+        if not input_paths:
+            raise ValueError("No valid statement files were provided; nothing to convert.")
 
         output_dir = Path.cwd() / "output"
         run_date = date.today().strftime("%Y-%m-%d")
-        output_paths = (
-            output_dir / f"family-{run_date}.csv",
-            output_dir / f"personal-{run_date}.csv",
-            output_dir / f"credit-personal-{run_date}.csv",
-        )
-        payment_modes = ("Family", "Personal")
-        missing_inputs = [str(path) for path in input_paths if not path.is_file()]
-        if missing_inputs:
-            raise FileNotFoundError(f"Excel file not found: {', '.join(missing_inputs)}")
-        for input_path, output_path, payment_mode in zip(input_paths[:2], output_paths[:2], payment_modes):
-            count = convert(input_path, output_path, payment_mode)
+        output_paths = {
+            "family": output_dir / f"family-{run_date}.csv",
+            "personal": output_dir / f"personal-{run_date}.csv",
+            "credit_personal": output_dir / f"credit-personal-{run_date}.csv",
+        }
+        payment_modes = {"family": "Family", "personal": "Personal"}
+        for account, input_path in input_paths.items():
+            output_path = output_paths[account]
+            if account == "credit_personal":
+                count = convert_credit_card(input_path, output_path)
+            else:
+                count = convert(input_path, output_path, payment_modes[account])
             print(f"Wrote {count} transactions to {output_path}")
-        count = convert_credit_card(input_paths[2], output_paths[2])
-        print(f"Wrote {count} transactions to {output_paths[2]}")
     except (OSError, ValueError, KeyError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
