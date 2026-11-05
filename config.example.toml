@@ -1,0 +1,16 @@
+# Copy this file to config.toml, then replace these fictional examples with your own rules.
+# Rules are checked in order; the first matching keyword determines the category.
+
+[[rules]]
+keys = ["sample cafe", "demo restaurant"]
+category = "Food"
+
+[[rules]]
+keys = ["example power company"]
+category = "Bills"
+
+[google_sheets]
+personal_and_credit_url = "https://docs.google.com/spreadsheets/d/REPLACE_WITH_PERSONAL_SHEET_ID/edit?gid=0"
+family_url = "https://docs.google.com/spreadsheets/d/REPLACE_WITH_FAMILY_SHEET_ID/edit?gid=0"
+duplicate_window = 10
+service_account_file = "service-account.json"

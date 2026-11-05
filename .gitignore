@@ -205,6 +205,21 @@ cython_debug/
 # Temporary file for partial code execution
 tempCodeRunnerFile.py
 
+# Generated statement exports
+output/
+
+# Local development input files may contain private bank statements
+input/
+
+# Local category customizations
+config.toml
+
+# Google service-account JSON key contains private key material.
+service-account.json
+
+# macOS Finder metadata
+.DS_Store
+
 # Ruff stuff:
 .ruff_cache/
 
