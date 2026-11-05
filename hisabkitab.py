@@ -121,14 +121,6 @@ def normalize_transaction_date(value: object) -> str:
         raise ValueError(f"Unrecognized transaction date: {value!r}; expected a valid date") from exc
 
 
-def date_sort_key(value: object) -> tuple[int, date]:
-    """Sort valid transaction dates newest first; invalid values sort last."""
-    try:
-        return (1, date.fromisoformat(normalize_transaction_date(value)))
-    except ValueError:
-        return (0, date.min)
-
-
 def categorize_note(note: object) -> str:
     text = str(note or "").casefold()
     for keys, category in CATEGORY_RULES:
@@ -150,45 +142,44 @@ def convert(input_path: Path, output_path: Path, payment_mode: str) -> int:
     deposit_col = find_column(headers, ("deposit", "credit")) - 1
     remark_col = find_column(headers, ("transaction remark", "transaction description", "narration", "particulars", "description")) - 1
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
     transactions = []
-    count = 0
+    for values in sheet[FIRST_DATA_ROW - 1:]:
+        row = list(values) + [None] * max(0, LAST_COLUMN - len(values))
+        transaction_date = row[date_col] if len(row) > date_col else None
+        withdrawal = row[withdrawal_col] if len(row) > withdrawal_col else None
+        deposit = row[deposit_col] if len(row) > deposit_col else None
+        remark = row[remark_col] if len(row) > remark_col else None
+
+        # Ignore trailing blank rows and rows that contain no transaction data.
+        if all(value is None or str(value).strip() == "" for value in (transaction_date, withdrawal, deposit, remark)):
+            continue
+        if withdrawal is not None and str(withdrawal).strip() != "" and float(withdrawal) == 0:
+            if deposit is None or str(deposit).strip() == "":
+                continue
+            amount = float(deposit)
+            transaction_type = "Income"
+        elif withdrawal is not None and str(withdrawal).strip() != "":
+            amount = -abs(float(withdrawal))
+            transaction_type = "Expense"
+        elif deposit is not None and str(deposit).strip() != "":
+            amount = float(deposit)
+            transaction_type = "Income"
+        else:
+            # Skip non-transaction rows such as repeated headings or balances.
+            continue
+
+        transaction_date = normalize_transaction_date(transaction_date)
+        note = remark or ""
+        record = (transaction_date, amount, categorize_note(note), payment_mode, transaction_type, note, "")
+        transactions.append((transaction_date, record))
+    transactions.sort(key=lambda item: item[0], reverse=True)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", newline="", encoding="utf-8-sig") as csv_file:
         writer = csv.writer(csv_file)
         writer.writerow(HEADERS)
-        for values in sheet[FIRST_DATA_ROW - 1:]:
-            row = list(values) + [None] * max(0, LAST_COLUMN - len(values))
-            transaction_date = row[date_col] if len(row) > date_col else None
-            withdrawal = row[withdrawal_col] if len(row) > withdrawal_col else None
-            deposit = row[deposit_col] if len(row) > deposit_col else None
-            remark = row[remark_col] if len(row) > remark_col else None
-
-            # Ignore trailing blank rows and rows that contain no transaction data.
-            if all(value is None or str(value).strip() == "" for value in (transaction_date, withdrawal, deposit, remark)):
-                continue
-            if withdrawal is not None and str(withdrawal).strip() != "" and float(withdrawal) == 0:
-                if deposit is None or str(deposit).strip() == "":
-                    continue
-                amount = float(deposit)
-                transaction_type = "Income"
-            elif withdrawal is not None and str(withdrawal).strip() != "":
-                amount = -abs(float(withdrawal))
-                transaction_type = "Expense"
-            elif deposit is not None and str(deposit).strip() != "":
-                amount = float(deposit)
-                transaction_type = "Income"
-            else:
-                # Skip non-transaction rows such as repeated headings or balances.
-                continue
-
-            transaction_date = normalize_transaction_date(transaction_date)
-            note = remark or ""
-            record = (transaction_date, amount, categorize_note(note), payment_mode, transaction_type, note, "")
-            transactions.append((date_sort_key(transaction_date), record))
-            count += 1
-        transactions.sort(key=lambda item: item[0], reverse=True)
         writer.writerows(record for _, record in transactions)
-    return count
+    return len(transactions)
 
 
 def convert_credit_card(input_path: Path, output_path: Path) -> int:
@@ -237,7 +228,7 @@ def convert_credit_card(input_path: Path, output_path: Path) -> int:
         transaction_date = normalize_transaction_date(transaction_date)
         note = details or ""
         record = (transaction_date, amount, categorize_note(note), "Personal Credit Card", transaction_type, note, reference or "")
-        transactions.append((date_sort_key(transaction_date), record))
+        transactions.append((transaction_date, record))
 
     transactions.sort(key=lambda item: item[0], reverse=True)
     output_path.parent.mkdir(parents=True, exist_ok=True)

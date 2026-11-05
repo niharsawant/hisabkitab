@@ -30,6 +30,7 @@ HEADER_ALIASES = {
     "note": ("note", "notes", "details"),
     "transaction reference": ("transaction reference", "reference number", "reference no"),
 }
+CANONICAL_HEADERS = dict(zip(HEADER_ALIASES, EXPECTED_HEADERS))
 MAX_COLUMNS_RANGE = "AZ"
 
 
@@ -141,10 +142,10 @@ class DuplicateIndex:
 
 def deduplicate_local(rows: list[dict[str, str]]) -> list[dict[str, str]]:
     """Sort and deduplicate a local batch before comparing it with a sheet."""
-    rows.sort(key=lambda row: parse_date(row.get("Date")) or date.min, reverse=True)
+    ordered_rows = sorted(rows, key=lambda row: parse_date(row.get("Date")) or date.min, reverse=True)
     index = DuplicateIndex()
     unique = []
-    for row in rows:
+    for row in ordered_rows:
         if index.contains(row):
             continue
         index.add(row)
@@ -168,7 +169,7 @@ def target_field_indexes(headers: list[object]) -> tuple[dict[str, int], list[tu
         (index for index, value in enumerate(headers) if str(value or "").strip()),
         default=-1,
     ) + 1
-    for field, canonical_header in zip(HEADER_ALIASES, EXPECTED_HEADERS):
+    for field, canonical_header in CANONICAL_HEADERS.items():
         if field not in indexes:
             indexes[field] = next_column
             new_headers.append((next_column, canonical_header))
@@ -180,7 +181,7 @@ def sheet_row_to_record(row: list[object], indexes: dict[str, int]) -> dict[str,
     record: dict[str, object] = {}
     for field in HEADER_ALIASES:
         column = indexes.get(field)
-        record[EXPECTED_HEADERS[list(HEADER_ALIASES).index(field)]] = row[column] if column is not None and column < len(row) else ""
+        record[CANONICAL_HEADERS[field]] = row[column] if column is not None and column < len(row) else ""
     return record
 
 
@@ -399,8 +400,9 @@ def all_sheet_records_are_in_local(
     duplicate_window: int,
 ) -> bool:
     """Return true when every non-empty row in a full remote window occurs locally."""
+    indexes, _ = target_field_indexes(headers)
     remote_records = [
-        sheet_row_to_record(row, target_field_indexes(headers)[0])
+        sheet_row_to_record(row, indexes)
         for row in recent_rows[:duplicate_window]
         if any(value not in (None, "") for value in row)
     ]
@@ -446,8 +448,6 @@ def sync_exports(
         personal_rows.extend(read_csv_rows(personal_csv))
     if credit_card_csv is not None:
         personal_rows.extend(read_csv_rows(credit_card_csv))
-    if sync_personal:
-        personal_rows = deduplicate_local(personal_rows)
     family_rows = read_csv_rows(family_csv) if family_csv is not None else []
     window = int(sheet_config.get("duplicate_window", 10))
     if window < 1:
