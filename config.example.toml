@@ -9,6 +9,12 @@ category = "Food"
 keys = ["example power company"]
 category = "Bills"
 
+# Supported bank: ICICI Bank. The statement type determines which layout is used.
+[statements]
+family_account_bank = "ICICI Bank"
+personal_account_bank = "ICICI Bank"
+personal_credit_account_bank = "ICICI Bank"
+
 [google_sheets]
 personal_and_credit_url = "https://docs.google.com/spreadsheets/d/REPLACE_WITH_PERSONAL_SHEET_ID/edit?gid=0"
 family_url = "https://docs.google.com/spreadsheets/d/REPLACE_WITH_FAMILY_SHEET_ID/edit?gid=0"

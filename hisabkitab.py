@@ -41,6 +41,12 @@ HEADERS = ("Date", "Amount", "Category", "Payment Mode", "Type", "Note", "Transa
 __version__ = "v0.1.0"
 CATEGORY_RULES_PATH = Path(__file__).with_name("config.toml")
 
+DEFAULT_STATEMENT_BANKS = {
+    "family_account_bank": "ICICI Bank",
+    "personal_account_bank": "ICICI Bank",
+    "personal_credit_account_bank": "ICICI Bank",
+}
+
 
 def load_config(path: Path = CATEGORY_RULES_PATH) -> dict[str, object]:
     if not path.is_file():
@@ -72,8 +78,24 @@ def load_category_rules(config: dict[str, object]) -> tuple[tuple[tuple[str, ...
     return tuple(parsed_rules)
 
 
+def load_statement_config(config: dict[str, object]) -> dict[str, str]:
+    """Validate the configured bank for each statement type."""
+    statements = config.get("statements", {})
+    if not isinstance(statements, dict):
+        raise SystemExit("[statements] in config.toml must be a TOML table")
+
+    parsed = {}
+    for key, default in DEFAULT_STATEMENT_BANKS.items():
+        value = str(statements.get(key, default)).strip()
+        if value.casefold() != "icici bank".casefold():
+            raise SystemExit(f"Unsupported {key} value {value!r}; currently only 'ICICI Bank' is supported")
+        parsed[key] = "ICICI Bank"
+    return parsed
+
+
 CONFIG = load_config()
 CATEGORY_RULES = load_category_rules(CONFIG)
+STATEMENT_CONFIG = load_statement_config(CONFIG)
 
 
 def local_path(value: str) -> Path:
