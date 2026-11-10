@@ -27,9 +27,9 @@ Here’s what you can configure:
 | --- | --- |
 | `rules.keys` | Text snippets to look for in a transaction note. Matches are case-insensitive. |
 | `rules.category` | The category to use when one of the rule’s keys matches. |
-| `statements.family_account_bank` | Bank for the family account statement. Currently only `ICICI Bank` is supported. |
-| `statements.personal_account_bank` | Bank for the personal account statement. Currently only `ICICI Bank` is supported. |
-| `statements.personal_credit_account_bank` | Bank for the personal credit card statement. Currently only `ICICI Bank` is supported. |
+| `statements.family_account_bank` | Bank for the family account statement. Currently only `ICICI` is supported. |
+| `statements.personal_account_bank` | Bank for the personal account statement. Currently only `ICICI` is supported. |
+| `statements.personal_credit_account_bank` | Bank for the personal credit card statement. Currently only `ICICI` is supported. |
 | `google_sheets.personal_and_credit_url` | The sheet where personal bank and credit card transactions are combined. |
 | `google_sheets.family_url` | The sheet for family bank transactions. |
 | `google_sheets.duplicate_window` | How many recent sheet records to check for duplicates. The default is `10`. |
@@ -49,7 +49,7 @@ category = "Bills"
 
 If none of the keywords match, the transaction is categorized as `Others`.
 
-The three bank settings live in `[statements]`. Keep each value as `ICICI Bank` for now. The statement type determines which ICICI layout the script uses. When another bank is supported, its bank name and corresponding parsing logic will be added.
+The three bank settings live in `[statements]`. Keep each value as `ICICI` for now. The statement type determines which ICICI layout the script uses. When another bank is supported, its bank name and corresponding parsing logic will be added.
 
 ### 🔗 Connect to Google Sheets
 

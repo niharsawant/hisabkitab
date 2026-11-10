@@ -42,9 +42,9 @@ __version__ = "v0.1.0"
 CATEGORY_RULES_PATH = Path(__file__).with_name("config.toml")
 
 DEFAULT_STATEMENT_BANKS = {
-    "family_account_bank": "ICICI Bank",
-    "personal_account_bank": "ICICI Bank",
-    "personal_credit_account_bank": "ICICI Bank",
+    "family_account_bank": "ICICI",
+    "personal_account_bank": "ICICI",
+    "personal_credit_account_bank": "ICICI",
 }
 
 
@@ -87,9 +87,9 @@ def load_statement_config(config: dict[str, object]) -> dict[str, str]:
     parsed = {}
     for key, default in DEFAULT_STATEMENT_BANKS.items():
         value = str(statements.get(key, default)).strip()
-        if value.casefold() != "icici bank".casefold():
-            raise SystemExit(f"Unsupported {key} value {value!r}; currently only 'ICICI Bank' is supported")
-        parsed[key] = "ICICI Bank"
+        if value.casefold() != "icici":
+            raise SystemExit(f"Unsupported {key} value {value!r}; currently only 'ICICI' is supported")
+        parsed[key] = "ICICI"
     return parsed
 
 
