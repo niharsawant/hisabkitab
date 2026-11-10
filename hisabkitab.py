@@ -10,6 +10,7 @@ import csv
 import argparse
 import importlib
 from io import BytesIO
+from decimal import Decimal, InvalidOperation
 import sys
 import tempfile
 from datetime import date, datetime, timedelta
@@ -37,9 +38,15 @@ CARD_HEADER_ROW = 16
 CARD_FIRST_DATA_ROW = 18
 CARD_FIRST_COLUMN = 2  # B
 CARD_LAST_COLUMN = 18  # R
-HEADERS = ("Date", "Amount", "Category", "Payment Mode", "Type", "Note", "Transaction Reference")
-__version__ = "v0.1.0"
+HEADERS = ("Date", "Amount", "Category", "Payment Mode", "Type", "Note", "Transaction Reference", "Bank")
+__version__ = "v0.1.1"
 CATEGORY_RULES_PATH = Path(__file__).with_name("config.toml")
+
+DEFAULT_STATEMENT_BANKS = {
+    "family_account_bank": ("ICICI",),
+    "personal_account_bank": ("ICICI",),
+    "personal_credit_account_bank": ("ICICI", "HSBC"),
+}
 
 
 def load_config(path: Path = CATEGORY_RULES_PATH) -> dict[str, object]:
@@ -72,8 +79,27 @@ def load_category_rules(config: dict[str, object]) -> tuple[tuple[tuple[str, ...
     return tuple(parsed_rules)
 
 
+def load_statement_config(config: dict[str, object]) -> dict[str, str]:
+    """Validate the configured bank for each statement type."""
+    statements = config.get("statements", {})
+    if not isinstance(statements, dict):
+        raise SystemExit("[statements] in config.toml must be a TOML table")
+
+    parsed = {}
+    for key, default in DEFAULT_STATEMENT_BANKS.items():
+        allowed_banks = default
+        value = str(statements.get(key, allowed_banks[0])).strip()
+        supported = {bank.casefold(): bank for bank in allowed_banks}
+        if value.casefold() not in supported:
+            accepted = " or ".join(repr(bank) for bank in allowed_banks)
+            raise SystemExit(f"Unsupported {key} value {value!r}; currently only {accepted} is supported")
+        parsed[key] = supported[value.casefold()]
+    return parsed
+
+
 CONFIG = load_config()
 CATEGORY_RULES = load_category_rules(CONFIG)
+STATEMENT_CONFIG = load_statement_config(CONFIG)
 
 
 def local_path(value: str) -> Path:
@@ -130,7 +156,7 @@ def categorize_note(note: object) -> str:
     return "Others"
 
 
-def convert(input_path: Path, output_path: Path, payment_mode: str) -> int:
+def convert(input_path: Path, output_path: Path, payment_mode: str, bank: str) -> int:
     if not input_path.is_file():
         raise FileNotFoundError(f"Input file not found: {input_path}")
 
@@ -171,7 +197,7 @@ def convert(input_path: Path, output_path: Path, payment_mode: str) -> int:
 
         transaction_date = normalize_transaction_date(transaction_date)
         note = remark or ""
-        record = (transaction_date, amount, categorize_note(note), payment_mode, transaction_type, note, "")
+        record = (transaction_date, amount, categorize_note(note), payment_mode, transaction_type, note, "", bank)
         transactions.append((transaction_date, record))
     transactions.sort(key=lambda item: item[0], reverse=True)
 
@@ -183,7 +209,13 @@ def convert(input_path: Path, output_path: Path, payment_mode: str) -> int:
     return len(transactions)
 
 
-def convert_credit_card(input_path: Path, output_path: Path) -> int:
+def convert_credit_card(input_path: Path, output_path: Path, bank: str) -> int:
+    if bank == "HSBC":
+        return convert_hsbc_credit_card(input_path, output_path, bank)
+    return convert_icici_credit_card(input_path, output_path, bank)
+
+
+def convert_icici_credit_card(input_path: Path, output_path: Path, bank: str) -> int:
     """Convert the personal credit card statement layout (headers row 16, data row 18)."""
     if not input_path.is_file():
         raise FileNotFoundError(f"Input file not found: {input_path}")
@@ -228,8 +260,49 @@ def convert_credit_card(input_path: Path, output_path: Path) -> int:
 
         transaction_date = normalize_transaction_date(transaction_date)
         note = details or ""
-        record = (transaction_date, amount, categorize_note(note), "Personal Credit Card", transaction_type, note, reference or "")
+        record = (transaction_date, amount, categorize_note(note), "Personal Credit Card", transaction_type, note, reference or "", bank)
         transactions.append((transaction_date, record))
+
+    transactions.sort(key=lambda item: item[0], reverse=True)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", newline="", encoding="utf-8-sig") as csv_file:
+        writer = csv.writer(csv_file)
+        writer.writerow(HEADERS)
+        writer.writerows(record for _, record in transactions)
+    return len(transactions)
+
+
+def convert_hsbc_credit_card(input_path: Path, output_path: Path, bank: str) -> int:
+    """Convert headerless HSBC credit card CSV rows: date, note, amount."""
+    if not input_path.is_file():
+        raise FileNotFoundError(f"Input file not found: {input_path}")
+
+    transactions = []
+    with input_path.open("r", newline="", encoding="utf-8-sig") as csv_file:
+        for line_number, row in enumerate(csv.reader(csv_file), start=1):
+            if not row or all(not str(value).strip() for value in row):
+                continue
+            if len(row) < 3:
+                raise ValueError(f"HSBC CSV row {line_number} has fewer than three columns")
+            raw_date, raw_note, raw_amount = row[:3]
+            try:
+                amount = Decimal(raw_amount.replace(",", "").strip())
+            except (InvalidOperation, AttributeError) as exc:
+                raise ValueError(f"Invalid HSBC amount on CSV row {line_number}: {raw_amount!r}") from exc
+            transaction_date = normalize_transaction_date(raw_date)
+            note = raw_note.strip()
+            transaction_type = "Expense" if amount < 0 else "Income"
+            record = (
+                transaction_date,
+                float(amount),
+                categorize_note(note),
+                "Personal Credit Card",
+                transaction_type,
+                note,
+                "",
+                bank,
+            )
+            transactions.append((transaction_date, record))
 
     transactions.sort(key=lambda item: item[0], reverse=True)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -251,7 +324,10 @@ def main() -> int:
             expected_inputs = {
                 "family": Path.cwd() / "input" / "family.xls",
                 "personal": Path.cwd() / "input" / "personal.xls",
-                "credit_personal": Path.cwd() / "input" / "credit-personal.xls",
+                "credit_personal": Path.cwd() / "input" / (
+                    "credit-personal.csv" if STATEMENT_CONFIG["personal_credit_account_bank"] == "HSBC"
+                    else "credit-personal.xls"
+                ),
             }
             input_paths = {}
             for account, input_path in expected_inputs.items():
@@ -265,7 +341,12 @@ def main() -> int:
             account_inputs = (
                 ("family", "Provide Excel sheet of the family bank account: "),
                 ("personal", "Provide Excel sheet of the personal bank account: "),
-                ("credit_personal", "Provide Excel sheet of the personal credit card statement: "),
+                (
+                    "credit_personal",
+                    "Provide personal credit card statement file (CSV for HSBC, Excel for ICICI): "
+                    if STATEMENT_CONFIG["personal_credit_account_bank"] == "HSBC"
+                    else "Provide Excel sheet of the personal credit card statement: ",
+                ),
             )
             input_paths = {}
             for account, prompt in account_inputs:
@@ -299,12 +380,18 @@ def main() -> int:
             "credit_personal": output_dir / f"credit-personal-{run_date}.csv",
         }
         payment_modes = {"family": "Family", "personal": "Personal"}
+        statement_bank_keys = {
+            "family": "family_account_bank",
+            "personal": "personal_account_bank",
+            "credit_personal": "personal_credit_account_bank",
+        }
         for account, input_path in input_paths.items():
             output_path = output_paths[account]
+            bank = STATEMENT_CONFIG[statement_bank_keys[account]]
             if account == "credit_personal":
-                count = convert_credit_card(input_path, output_path)
+                count = convert_credit_card(input_path, output_path, bank)
             else:
-                count = convert(input_path, output_path, payment_modes[account])
+                count = convert(input_path, output_path, payment_modes[account], bank)
             if args.dev:
                 print(f"Wrote {count} transactions to {output_path}")
             else:

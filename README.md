@@ -4,7 +4,7 @@ Convert family, personal bank, and credit card statements into date-sorted CSV f
 
 ## ⚙️ Setup
 
-The script works with `.xls` and `.xlsx` files. First, install the required packages and make a local copy of the example configuration:
+The script reads `.xls` and `.xlsx` statements, plus headerless CSV files for HSBC credit cards. First, install the required packages and make a local copy of the example configuration:
 
 ```sh
 python3 -m pip install python-calamine google-api-python-client google-auth
@@ -19,7 +19,7 @@ python3 -m pip install tomli
 
 ### 📄 Configure the TOML file
 
-Open `config.toml` to set up category rules and Google Sheets options. It’s a local file that may contain private details, so keep it private. `config.example.toml` includes sample rules and placeholder sheet URLs.
+Open `config.toml` to set up category rules, statement banks and formats, and Google Sheets options. It’s a local file that may contain private details, so keep it private. `config.example.toml` includes sample rules and placeholder sheet URLs.
 
 Here’s what you can configure:
 
@@ -27,6 +27,9 @@ Here’s what you can configure:
 | --- | --- |
 | `rules.keys` | Text snippets to look for in a transaction note. Matches are case-insensitive. |
 | `rules.category` | The category to use when one of the rule’s keys matches. |
+| `statements.family_account_bank` | Bank for the family account statement. Currently only `ICICI` is supported. |
+| `statements.personal_account_bank` | Bank for the personal account statement. Currently only `ICICI` is supported. |
+| `statements.personal_credit_account_bank` | Bank for the personal credit card statement. Supports `ICICI` (Excel) and `HSBC` (CSV). |
 | `google_sheets.personal_and_credit_url` | The sheet where personal bank and credit card transactions are combined. |
 | `google_sheets.family_url` | The sheet for family bank transactions. |
 | `google_sheets.duplicate_window` | How many recent sheet records to check for duplicates. The default is `10`. |
@@ -45,6 +48,8 @@ category = "Bills"
 ```
 
 If none of the keywords match, the transaction is categorized as `Others`.
+
+The three bank settings live in `[statements]`. Family and personal bank accounts currently use `ICICI`. For personal credit cards, use `ICICI` for the existing Excel statement or `HSBC` for the HSBC CSV statement. The HSBC CSV must not have a header row; its first three columns must be date, note, and amount, in that order. Category is inferred from the note using the same rules as the other statements.
 
 ### 🔗 Connect to Google Sheets
 
@@ -98,6 +103,8 @@ You can leave a prompt blank to skip that statement. Missing or invalid files ar
 - `personal-YYYY-MM-DD.csv`
 - `credit-personal-YYYY-MM-DD.csv`
 
+Each generated CSV includes a final `Bank` column populated from the matching bank setting in `config.toml`.
+
 In normal mode, CSVs are created in a temporary folder for Google Sheets sync and removed when the script finishes, including when syncing fails. They are not left in `output/`. When you process either personal statement, any counterpart CSV already in `output/` for that date is also included in the personal sheet sync. Family transactions go to the family sheet. If the service account JSON is missing or invalid, you’ll see a warning that syncing was skipped, and the temporary CSVs are still cleaned up. Other sync issues, such as missing sheet access, are reported as errors.
 
 ## 🧪 Run in the development environment
@@ -108,7 +115,8 @@ During development, keep any statements you want to process in `input/` using th
 | --- | --- |
 | Family bank account | `family.xls` |
 | Personal bank account | `personal.xls` |
-| Personal credit card | `credit-personal.xls` |
+| Personal credit card with ICICI selected | `credit-personal.xls` |
+| Personal credit card with HSBC selected | `credit-personal.csv` |
 
 Then run:
 

@@ -20,6 +20,7 @@ EXPECTED_HEADERS = (
     "Type",
     "Note",
     "Transaction Reference",
+    "Bank",
 )
 HEADER_ALIASES = {
     "date": ("date", "transaction date"),
@@ -29,6 +30,7 @@ HEADER_ALIASES = {
     "type": ("type",),
     "note": ("note", "notes", "details"),
     "transaction reference": ("transaction reference", "reference number", "reference no"),
+    "bank": ("bank",),
 }
 CANONICAL_HEADERS = dict(zip(HEADER_ALIASES, EXPECTED_HEADERS))
 MAX_COLUMNS_RANGE = "AZ"
@@ -335,6 +337,7 @@ def prepend_unique_rows(
                 "type": record.get("Type", ""),
                 "note": record.get("Note", ""),
                 "transaction reference": record.get("Transaction Reference", ""),
+                "bank": record.get("Bank", ""),
             }
             output_row: list[object] = [""] * column_count
             field_by_column: dict[int, str] = {}
