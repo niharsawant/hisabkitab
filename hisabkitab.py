@@ -39,7 +39,7 @@ CARD_FIRST_DATA_ROW = 18
 CARD_FIRST_COLUMN = 2  # B
 CARD_LAST_COLUMN = 18  # R
 HEADERS = ("Date", "Amount", "Category", "Payment Mode", "Type", "Note", "Transaction Reference", "Bank")
-__version__ = "v0.1.0"
+__version__ = "v0.1.1"
 CATEGORY_RULES_PATH = Path(__file__).with_name("config.toml")
 
 DEFAULT_STATEMENT_BANKS = {
