@@ -9,11 +9,13 @@ category = "Food"
 keys = ["example power company"]
 category = "Bills"
 
-# Supported bank: ICICI. The statement type determines which layout is used.
+# Family and personal account statements currently support ICICI.
+# Personal credit cards support ICICI or HSBC. HSBC statements are CSV files.
 [statements]
 family_account_bank = "ICICI"
 personal_account_bank = "ICICI"
 personal_credit_account_bank = "ICICI"
+# For an HSBC credit card CSV, change the value above to "HSBC".
 
 [google_sheets]
 personal_and_credit_url = "https://docs.google.com/spreadsheets/d/REPLACE_WITH_PERSONAL_SHEET_ID/edit?gid=0"
